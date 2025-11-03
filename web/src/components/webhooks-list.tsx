@@ -1,11 +1,18 @@
 import {useSuspenseInfiniteQuery} from '@tanstack/react-query'
 import {Loader2} from 'lucide-react'
-import {useEffect, useRef} from 'react'
+import {useEffect, useRef, useState} from 'react'
 
 import {webhookListSchema} from '../http/schemas/webhooks.ts'
 import {WebhooksListItem} from './webhooks-list-item.tsx'
 
+import * as Dialog from '@radix-ui/react-dialog';
+import {CodeBlock} from "./ui/code-block.tsx";
+
 export function WebhooksList() {
+  const [chekedWebhooksIds, setCheckWebhooksIds] = useState<string[]>([]);
+  const hasSelectedWebhooks = chekedWebhooksIds.length > 0;
+  const [generatedCodeResponse, setGeneratedCodeCodeResponse] = useState<string | null>(null);
+
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const observerRef = useRef<IntersectionObserver>(null)
 
@@ -51,23 +58,73 @@ export function WebhooksList() {
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
-  return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="space-y-1 p-2">
-        {webhooks.map((webhook) => (
-          <WebhooksListItem key={webhook.id} webhook={webhook}/>
-        ))}
-      </div>
 
-      {hasNextPage && (
-        <div className="p-2" ref={loadMoreRef}>
-          {isFetchingNextPage && (
-            <div className="flex items-center justify-center py-2">
-              <Loader2 className="size-5 animate-spin text-zinc-500"/>
+  function handleCheckWebhook(webhookId: string) {
+    if (!chekedWebhooksIds.includes(webhookId)) {
+      setCheckWebhooksIds((state) => [...state, webhookId]);
+    } else {
+      setCheckWebhooksIds((state) => state.filter((id) => id !== webhookId));
+    }
+  }
+
+  async function handleGenerateCode() {
+    const response = await fetch('http://localhost:3333/api/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({webhooksIds: chekedWebhooksIds})
+    })
+    type GenerateResponse = {
+      code: string;
+    }
+    const data: GenerateResponse = await response.json();
+    setGeneratedCodeCodeResponse(data.code);
+  }
+
+  return (
+    <>
+      <div className="">
+        <div className="top-0 left-0 right-0 px-1 m-2">
+          <button disabled={!hasSelectedWebhooks} type="button"
+                  onClick={handleGenerateCode}
+                  className="w-full h-10 bg-indigo-400 rounded cursor-pointer hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-400">Gerar
+            cóidgo
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <div className="space-y-1 p-2">
+            {webhooks.map((webhook) => (
+              <WebhooksListItem key={webhook.id} webhook={webhook}
+                                isWebhookChecked={chekedWebhooksIds.includes(webhook.id)}
+                                onWebhookChecked={handleCheckWebhook}/>
+            ))}
+          </div>
+
+          {hasNextPage && (
+            <div className="p-2" ref={loadMoreRef}>
+              {isFetchingNextPage && (
+                <div className="flex items-center justify-center py-2">
+                  <Loader2 className="size-5 animate-spin text-zinc-500"/>
+                </div>
+              )}
             </div>
           )}
+
         </div>
-      )}
-    </div>
+
+        {!!generatedCodeResponse && (
+          <Dialog.Root defaultOpen>
+            <Dialog.Overlay className="bg-black/60 inset-0 fixed z-20" />
+
+            <Dialog.Content className="flex items-center justify-center fixed left-1/2 top-1/2 max-h-[85vh] w-[90vw] -translate-x-1/2 -translate-y-1/2 z-40">
+              <div className="bg-zinc-900 w-[600px] p-4 rounded-lg border border-zinc-800 max-h-[620px] overflow-y-auto">
+                <CodeBlock language="typescript" code={generatedCodeResponse} />
+              </div>
+            </Dialog.Content>
+          </Dialog.Root>
+        )}
+      </div>
+    </>
   )
 }

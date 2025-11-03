@@ -1,35 +1,33 @@
 import type {FastifyPluginAsyncZod} from 'fastify-type-provider-zod'
 import {z} from 'zod'
+import {createSelectSchema} from "drizzle-zod";
+import {webhooks} from "@/db/schema";
+import {db} from "@/db";
+import {eq} from "drizzle-orm";
 
-export const getWebhooks: FastifyPluginAsyncZod = async (app) => {
+export const getWebhook: FastifyPluginAsyncZod = async (app) => {
   app.get(
-    '/api/webhooks',
+    '/api/webhooks/:id',
     {
       schema: {
-        summary: 'Get Webhooks',
+        summary: 'Get a specific webhook by ID',
         tags: ['Webhooks'],
-        querystring: z.object({
-          limit: z.number().min(1).max(100).optional().default(20),
+        params: z.object({
+          id: z.uuidv7()
         }),
         response: {
-          200: z.array(
-            z.object({
-              id: z.string(),
-              method: z.string(),
-            })
-          )
+          200: createSelectSchema(webhooks),
+          404: z.object({message: z.string()}),
         }
       },
     },
     async (request, reply) => {
-      const {limit} = request.query
+      const {id} = request.params
+      const result = await db.select().from(webhooks).where(eq(webhooks.id, id)).limit(1)
 
-      return [
-        {
-          id: '123e4567-e89b-12d3-a456-426614174000',
-          method: 'POST',
-        }
-      ]
+      if (!result.length) return reply.status(404).send({message: 'Webhook not found'})
+
+      return reply.send(result[0])
     },
   )
 }
